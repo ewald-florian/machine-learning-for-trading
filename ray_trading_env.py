@@ -81,19 +81,20 @@ class DataSource:
     """
 
     def __init__(self, trading_days=252, ticker='AAPL', normalize=True, 
-                 get_data_from="csv"):
+                 data_path=None, get_data_from_csv=True):
+        
         self.ticker = ticker
         self.trading_days = trading_days
         self.normalize = normalize
-        
+
         # note: the original trading_env loads data only from hdf5
-        if get_data_from == "csv":
-            self.filename = str(self.ticker) + "_prices.csv"
-            self.data = self.load_data_from_csv()
-        elif get_data_from == "hdf":
-            self.load_data()
+        if get_data_from_csv:
+            if data_path: # if path is specified load from path
+                self.filename = data_path
+                self.data = self.load_data_from_csv()
+          
         else:
-            raise ValueError("No data source specified. Must be 'csv' or 'hdf'.")
+            self.load_data()
             
         self.preprocess_data()
         self.min_values = self.data.min()
@@ -119,9 +120,11 @@ class DataSource:
     
     # load data from csv (for single asset)
     def load_data_from_csv(self):
+            
         df = pd.read_csv(self.filename, parse_dates=["date"], index_col=["date", "ticker"])
         log.info('got data for {}...'.format(self.ticker))
         return df
+
 
     def preprocess_data(self):
         """calculate returns and percentiles, then removes missing values"""
@@ -151,7 +154,7 @@ class DataSource:
         features = self.data.columns.drop('returns')
         self.data['returns'] = r  # don't scale returns
         self.data = self.data.loc[:, ['returns'] + list(features)]
-        log.info(self.data.info())
+        #log.info(self.data.info()) #-> prints df info
 
     def reset(self):
         """Provides starting index for time series and resets step"""
@@ -315,7 +318,8 @@ class RayTradingEnvironment(gym.Env):
         self.trading_cost_bps = config.get("trading_cost_bps", 1e-3)
         self.time_cost_bps = config.get("time_cost_bps", 1e-4)
         self.ticker = config.get("ticker", "AAPL")
-        self.get_data_from = config.get("get_data_from", "csv")
+        self.get_data_from_csv = config.get("get_data_from_csv", True)
+        self.data_path = config.get("data_path", '/home/jovyan/machine-learning-for-trading/AAPL_prices.csv')
         
         # the standard version of trading_env takes params directly as inputs (no dict used)
         #self.trading_days = trading_days
@@ -325,7 +329,9 @@ class RayTradingEnvironment(gym.Env):
         
         self.data_source = DataSource(trading_days=self.trading_days,
                                           ticker=self.ticker,
-                                          get_data_from = self.get_data_from)
+                                          data_path=self.data_path,
+                                          get_data_from_csv=self.get_data_from_csv)
+        
         self.simulator = TradingSimulator(steps=self.trading_days,
                                           trading_cost_bps=self.trading_cost_bps,
                                           time_cost_bps=self.time_cost_bps)
